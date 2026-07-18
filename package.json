@@ -1,0 +1,17 @@
+{
+  "name": "mizan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mizan — personal multi-currency wealth tracker",
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/local-notifications": "^6.1.0",
+    "@capacitor/filesystem": "^6.0.1",
+    "@capacitor/share": "^6.0.2",
+    "@capacitor/preferences": "^6.0.2"
+  }
+}
