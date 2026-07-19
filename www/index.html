@@ -346,6 +346,10 @@ function defaults(){
     expenses:[],     // {id,ts,amount,cur,locId,cat,sar,note}
     rateHistory:[],  // {ts,usdYern,sarYern,usdYers}
     zakatHeldSince:Date.now(),
+    recurring:[],    // {id,kind,amount,cur,locId,shift,cat,note,freq,nextTs}
+    budgets:{},      // cat -> monthly SAR limit
+    zakatPaid:[],    // {ts,sar,note}
+    meta:{lastBackup:0},
   };
 }
 
@@ -574,6 +578,7 @@ function render(){
   document.getElementById("scr").innerHTML=`<div class="pad">${v()}</div>`;
   document.getElementById("nav").innerHTML=NAV.map(n=>`<button data-tab="${n.id}" class="${navActive(n.id)?'on':''}"><div class="pill">${icon(n.ic,22,navActive(n.id)?2.1:1.9)}</div><span class="lb">${t(n.id)}</span></button>`).join("");
   updateDerived();
+  syncWidget();
 }
 function renderHead(){
   const sub={home:fmtDate(Date.now()),balances:S.locations.length+" "+t('locations'),log:sortedLog().length+" "+t('points').toLowerCase(),
@@ -808,6 +813,8 @@ function viewZakat(){
   <div class="zexplain">${t('zakatExplainer')}</div>
   <div class="row" style="justify-content:space-between;padding:0 4px"><span style="font-size:12.5px;color:var(--muted);font-weight:600">${t('nisab')}: <b class="num" style="color:var(--ink-2)">${money(z.nisab,'SAR')}</b></span>
     <span style="font-size:12.5px;font-weight:700;color:${z.above?'var(--pos)':'var(--neg)'}">${z.above?t('aboveNisab'):t('belowNisab')}</span></div>
+  <button class="qbtn pri" data-act="zakatPaid" style="flex-direction:row;padding:13px;margin-top:2px">${icon('check',18,2.1)} ${isRTL()?'سجّل دفع الزكاة':'Mark zakat as paid'}</button>
+  ${(S.zakatPaid&&S.zakatPaid.length)?`<div class="sect" style="padding-top:2px">${isRTL()?'الزكاة المدفوعة':'Zakat paid'}</div>`+S.zakatPaid.slice().reverse().slice(0,6).map(z=>`<div class="zrow"><div style="flex:1"><div class="num" style="font-size:13px;font-weight:700">${money(z.sar,'SAR')} SAR</div><div style="font-size:11px;color:var(--muted);font-weight:600">${fmtDate(z.ts)}</div></div><span style="color:var(--pos)">${icon('check',18,2)}</span></div>`).join(""):""}
   <div class="sect" style="padding-top:2px">${t('eligibleAccounts')}</div>
   ${S.locations.filter(l=>!l.hidden).map(l=>{const sar=locYern(l)/rSar();
     return`<div class="zrow"><div class="bic" style="width:38px;height:38px;border-radius:11px">${icon(l.icon,18,1.9)}</div>
@@ -839,6 +846,7 @@ function viewHistory(){
   const kindLbl=h=>h.kind==='checkpoint'?t('checkpoints'):h.kind==='transfer'?t('transfer'):h.kind==='income'?t('incomeLbl'):t('edits');
   return`
   <div class="row" style="gap:8px;flex-wrap:wrap">${filters.map(f=>`<button class="fchip ${HFILTER===f[0]?'on':''}" data-hfilter="${f[0]}">${f[1]}</button>`).join("")}</div>
+  <input id="histSearch" placeholder="${isRTL()?'بحث في السجل…':'Search activity…'}" style="width:100%;border:1px solid var(--line-2);border-radius:12px;padding:10px 12px;font-size:14px;background:var(--inp);color:var(--ink);font-weight:600">
   ${rows.length?rows.map(h=>{const m=kindMeta(h.kind),a=histAmount(h);
     return`<div class="hrow" data-histid="${h.id||''}" style="cursor:pointer"><div class="ic" style="background:${m.t};color:${m.c}">${icon(m.ic,17,1.9)}</div>
       <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(histTitle(h))}</div>
@@ -881,6 +889,10 @@ function viewSettings(){
     ${S.rateHistory&&S.rateHistory.length?`<div class="setrow" style="flex-direction:column;align-items:stretch;gap:5px"><div style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em">${t('rateHistory')}</div>${S.rateHistory.slice(-5).reverse().map(h=>`<div class="row" style="justify-content:space-between;font-size:11px"><span class="muted">${fmtDate(h.ts)}</span><span class="num" style="font-weight:700">$${fmt(h.usdYern,0)} · ﷼${fmt(h.sarYern,0)} · S${fmt(h.usdYers,0)}</span></div>`).join("")}</div>`:""}
   </div></div>
 
+  <div class="setgrp"><div class="sect">${isRTL()?'ميزانيات شهرية':'Monthly budgets'}</div><div class="setcard">
+    ${EXP_CATS.map(c=>`<div class="setrow"><div style="flex:1;font-size:13.5px;font-weight:600">${t('cat_'+c)}</div><input class="finp num" data-budget="${c}" value="${(S.budgets&&S.budgets[c])?fmt(S.budgets[c],0):''}" placeholder="—" inputmode="decimal" style="width:96px;text-align:end"></div>`).join("")}
+  </div></div>
+
   <div class="setgrp"><div class="sect">${t('preferences')}</div><div class="setcard">
     <div class="setrow"><div class="ic">${icon('moon',18,1.9)}</div><div style="flex:1"><div class="t">${t('darkMode')}</div><div class="d">${t('darkModeD')}</div></div>${tgl(S.settings.theme==='dark','theme')}</div>
     <div class="setrow"><div class="ic">${icon('finger',18,1.9)}</div><div style="flex:1"><div class="t">${t('biometric')}</div><div class="d">${t('biometricD')}</div></div>${tgl(S.settings.biometric,'biometric')}</div>
@@ -908,7 +920,7 @@ function viewMore(){
     ["goals","target","var(--green)","var(--green-soft)",t('goals'),t('moreGoals')],
     ["history","clock","var(--gold)","var(--gold-soft)",t('history'),t('moreHistory')],
     ["settings","gear","var(--ink-2)","var(--chip-2)",t('settings'),t('moreSettings')]];
-  return items.map(m=>`<div class="morerow" data-tab="${m[0]}"><div class="ic" style="background:${m[3]};color:${m[2]}">${icon(m[1],22,1.9)}</div>
+  return `<div class="morerow" data-act="openRecurring"><div class="ic" style="background:var(--gold-soft);color:var(--gold)">${icon('refresh',22,1.9)}</div><div style="flex:1"><div style="font-size:14.5px;font-weight:700">${isRTL()?'المعاملات المتكررة':'Recurring'}</div><div style="font-size:12px;color:var(--muted);font-weight:500">${isRTL()?'دخل ومصروفات تلقائية':'Auto income & expenses'}</div></div><div class="chev">${icon('chevron',20,1.9)}</div></div>`+items.map(m=>`<div class="morerow" data-tab="${m[0]}"><div class="ic" style="background:${m[3]};color:${m[2]}">${icon(m[1],22,1.9)}</div>
     <div style="flex:1"><div style="font-size:14.5px;font-weight:700">${m[4]}</div><div style="font-size:12px;color:var(--muted);font-weight:500">${m[5]}</div></div>
     <div class="chev">${icon('chevron',20,1.9)}</div></div>`).join("");
 }
@@ -933,7 +945,7 @@ function viewStatement(){const off=STMT_MONTH,D=statementData(off);
   </div>
   <div class="card p">
     <div class="row" style="justify-content:space-between"><span style="font-weight:700;font-size:13px">${t('totalExpenses')}</span><b class="num" style="color:var(--neg)">−${money(D.expTot,'SAR')} SAR</b></div>
-    ${Object.keys(D.expBy).length?Object.keys(D.expBy).map(c=>`<div class="row" style="justify-content:space-between;margin-top:9px;font-size:12.5px"><span class="muted" style="font-weight:600">${t('cat_'+c)}</span><span class="num" style="font-weight:700">${money(D.expBy[c],'SAR')} SAR</span></div>`).join(""):`<div class="empty">${t('noExpense')}</div>`}
+    ${(()=>{const keys=Object.keys(D.expBy);if(!keys.length)return`<div class="empty">${t('noExpense')}</div>`;const mx=Math.max.apply(null,keys.map(c=>D.expBy[c]))||1;return keys.sort((a,b)=>D.expBy[b]-D.expBy[a]).map(c=>{const v=D.expBy[c],bud=(S.budgets&&S.budgets[c])||0,over=bud&&v>bud,w=bud?Math.min(100,Math.round(v/bud*100)):Math.round(v/mx*100);return`<div style="margin-top:11px"><div class="row" style="justify-content:space-between;font-size:12px"><span style="font-weight:700">${t('cat_'+c)}</span><span class="num" style="font-weight:700;color:${over?'var(--neg)':'var(--ink)'}">${money(v,'SAR')}${bud?' / '+money(bud,'SAR'):''} SAR</span></div><div style="height:7px;border-radius:5px;background:var(--chip);margin-top:5px;overflow:hidden"><i style="display:block;height:100%;border-radius:5px;background:${over?'var(--neg)':'var(--gold)'};width:${w}%"></i></div></div>`;}).join("");})()}
   </div>
   <div class="card p">
     <div class="row" style="justify-content:space-between"><span style="font-weight:800;font-size:15px">${t('netFlow')}</span><b class="num" style="font-size:18px;color:${D.net>=0?'var(--pos)':'var(--neg)'}">${D.net>=0?'+':'−'}${money(Math.abs(D.net),'SAR')} SAR</b></div>
@@ -1056,6 +1068,21 @@ function sheetActivity(h){const m=kindMeta(h.kind),a=histAmount(h);
     ${(h.kind==='income'||h.kind==='expense')?`<div class="trprev" style="margin-top:14px;background:var(--gold-soft);color:var(--gold-ink)">${t('reverseNote')}</div>`:""}
     <div class="sbtns" style="margin-top:16px"><button class="sbtn ghost" data-act="closeSheet">${t('cancel')}</button><button class="sbtn danger" data-act="histDelete" data-id="${h.id}">${t('deleteEntry')}</button></div>`;}
 
+function sheetRecurring(){
+  const catOpts=EXP_CATS.map(c=>`<option value="${c}">${t('cat_'+c)}</option>`).join("");
+  const list=(S.recurring&&S.recurring.length)?S.recurring.map(r=>{const loc=S.locations.find(x=>x.id===r.locId);return`<div class="zrow"><div style="flex:1;min-width:0"><div class="num" style="font-size:13px;font-weight:700">${r.kind==='income'?(isRTL()?'دخل':'Income'):(isRTL()?'مصروف':'Expense')} · ${money(r.amount,r.cur)} ${r.cur}</div><div style="font-size:11px;color:var(--muted);font-weight:600">${r.freq==='weekly'?(isRTL()?'أسبوعي':'weekly'):(isRTL()?'شهري':'monthly')}${loc?' · '+esc(locName(loc)):''}</div></div><button class="smallbtn" style="border-color:var(--neg);color:var(--neg)" data-act="recDelete" data-id="${r.id}">${t('delete')}</button></div>`;}).join(""):`<div class="empty" style="padding:16px">${isRTL()?'لا عناصر متكررة بعد':'No recurring items yet'}</div>`;
+  return`<h3>${isRTL()?'المعاملات المتكررة':'Recurring'}</h3><div class="sub">${isRTL()?'دخل أو مصروفات تُطبَّق تلقائياً':'Income or expenses applied automatically'}</div>
+    ${list}
+    <div class="flabel">${isRTL()?'النوع والتكرار':'Type & frequency'}</div>
+    <div class="row" style="gap:10px"><select class="fsel" id="recKind" style="flex:1;font-weight:700"><option value="income">${isRTL()?'دخل':'Income'}</option><option value="expense">${isRTL()?'مصروف':'Expense'}</option></select>
+      <select class="fsel" id="recFreq" style="flex:1;font-weight:700"><option value="monthly">${isRTL()?'شهري':'Monthly'}</option><option value="weekly">${isRTL()?'أسبوعي':'Weekly'}</option></select></div>
+    <div class="flabel">${isRTL()?'المبلغ والعملة':'Amount & currency'}</div>
+    <div class="row" style="gap:10px"><input class="tin num" id="recAmt" inputmode="decimal" placeholder="0" style="flex:2"><select class="fsel" id="recCur" style="flex:1;font-weight:800;color:var(--green-ink)">${curOpts('SAR')}</select></div>
+    <div class="flabel">${isRTL()?'الفئة (للمصروف)':'Category (for expense)'}</div><select class="fsel" id="recCat" style="width:100%;font-weight:700">${catOpts}</select>
+    <div class="flabel">${isRTL()?'الرصيد':'Balance'}</div><select class="fsel" id="recLoc" style="width:100%;font-weight:700">${locSelectOpts()}</select>
+    <div class="flabel">${isRTL()?'يبدأ في':'Starts on'}</div><input class="tin" type="date" id="recDate" value="${todayISO()}">
+    <div class="sbtns"><button class="sbtn ghost" data-act="closeSheet">${t('cancel')}</button><button class="sbtn pri" data-act="recAdd">${isRTL()?'إضافة':'Add'}</button></div>`;
+}
 function sheetGoal(g){return`<h3>${g?t('goals'):t('addGoal')}</h3>
     <input class="tin" id="glName" placeholder="${t('goalName')}" value="${g?esc(g.name):''}" style="margin-top:6px">
     <div class="row" style="gap:10px;margin-top:10px"><div style="flex:2"><div class="flabel" style="margin-top:0">${t('target')}</div><input class="tin num" id="glTarget" inputmode="decimal" value="${g?fmtInput(g.target):''}"></div>
@@ -1142,6 +1169,9 @@ function handleAct(a,el){const id=el&&el.dataset?el.dataset.id:null;switch(a){
     if(id){const g=S.goals.find(x=>x.id===id);g.name=nm;g.nameAr=nm;g.target=target;g.saved=saved;g.cur=cur;}
     else S.goals.push({id:uid('g'),name:nm,nameAr:nm,icon:'target',cur,target,saved});save();closeSheet();render();toast(id?t('saved_t'):t('goalAdded'));break;}
   case"goalDelete":snap();S.goals=S.goals.filter(g=>g.id!==id);save();closeSheet();render();undoToast(t('deleted'));break;
+  case"openRecurring":openSheet(sheetRecurring());break;
+  case"recAdd":{const amt=parseNum(gv('recAmt'));if(!amt){closeSheet();break;}const dv=gv('recDate'),nextTs=dv?new Date(dv+'T12:00:00').getTime():Date.now();if(!S.recurring)S.recurring=[];S.recurring.push({id:uid('rec'),kind:gv('recKind'),amount:amt,cur:gv('recCur'),locId:gv('recLoc'),shift:1,cat:gv('recCat'),note:'',freq:gv('recFreq'),nextTs});save();openSheet(sheetRecurring());toast(isRTL()?'أُضيف عنصر متكرر':'Recurring added');break;}
+  case"recDelete":{snap();S.recurring=(S.recurring||[]).filter(r=>r.id!==id);save();render();openSheet(sheetRecurring());undoToast(t('deleted'));break;}
   case"cpSave":{const c=S.log.find(x=>x.id===id);if(c){c.totalSar=parseNum(gv('cpTot'));const dv=gv('cpDate');if(dv)c.ts=new Date(dv+'T12:00:00').getTime();c.type=gv('cpType');}save();closeSheet();render();toast(t('saved_t'));break;}
   case"cpDelete":snap();S.log=S.log.filter(x=>x.id!==id);save();closeSheet();render();undoToast(t('deleted'));break;
   case"export":exportData();break;
@@ -1149,6 +1179,7 @@ function handleAct(a,el){const id=el&&el.dataset?el.dataset.id:null;switch(a){
   case"backupLocal":Native.backupLocal();break;
   case"backupDrive":Native.backupDrive();break;
   case"printStmt":printStatement();break;
+  case"zakatPaid":{snap();const z=computeZakat();if(!S.zakatPaid)S.zakatPaid=[];S.zakatPaid.push({ts:Date.now(),sar:Math.round(z.due),note:''});S.zakatHeldSince=Date.now();save();render();Native.scheduleZakatDue();undoToast((isRTL()?'سُجّلت الزكاة · ':'Zakat recorded · ')+money(z.due,'SAR')+' SAR');break;}
   case"reset":openSheet(sheetReset());break;
   case"doReset":{snap();const lang=S.settings.lang,theme=S.settings.theme;S=defaults();S.settings.lang=lang;S.settings.theme=theme;S.settings.onboarded=true;save();TAB='home';closeSheet();render();undoToast(t('resetDone'));break;}
   case"closeSheet":closeSheet();break;
@@ -1221,7 +1252,7 @@ function loadDemo(){const lang=S.settings.lang,theme=S.settings.theme;S=defaults
 
 /* ------- theme / lang / lock ------- */
 function applyTheme(){document.documentElement.setAttribute("data-theme",S.settings.theme);
-  const m=document.querySelector('meta[name=theme-color]');if(m)m.content=S.settings.theme==='dark'?'#101512':'#0B6B53';}
+  const m=document.querySelector('meta[name=theme-color]');if(m)m.content=S.settings.theme==='dark'?'#101512':'#0B6B53';Native.applyStatusBar();}
 function applyLangDom(){const l=S.settings.lang;document.documentElement.lang=l==='ar'?'ar':'en';document.documentElement.dir=l==='ar'?'rtl':'ltr';
   document.getElementById("lockT").textContent=t('locked');document.getElementById("lockP").textContent=t('unlockTap');}
 
@@ -1244,7 +1275,7 @@ document.addEventListener("visibilitychange",()=>{
 });
 
 /* ------- init ------- */
-function init(){load();applyTheme();applyLangDom();
+function init(){load();applyRecurring();applyTheme();applyLangDom();setupBackButton();autoBackup();Native.scheduleZakatDue();
   if(S.settings.biometric && CAP()){ document.getElementById("lock").hidden=false; tryUnlock(); }
   document.getElementById("fpBtn").onclick=()=>{ tryUnlock(); };
 
@@ -1276,6 +1307,7 @@ function init(){load();applyTheme();applyLangDom();
     if(el.dataset.hamt!==undefined){EDIT_HOLDINGS[+el.dataset.hamt].amount=el.value;updateEditPrev();return;}
     if(el.dataset.hold!==undefined){const lk=S.locations.find(l=>l.denoms);if(lk&&lk.holdings){lk.holdings[+el.dataset.hold].amount=parseNum(el.value);updateDerived();save();}return;}
     if(el.dataset.rate){const v=parseNum(el.value);if(v>0)S.rates[el.dataset.rate]=v;updateDerived();save();return;}
+    if(el.dataset.budget!==undefined){const c=el.dataset.budget,v=parseNum(el.value);if(!S.budgets)S.budgets={};if(v>0)S.budgets[c]=v;else delete S.budgets[c];save();return;}
     if(el.id==="trAmt")updateTransferPrev();
   });
   document.body.addEventListener("change",e=>{const el=e.target;if(!el.dataset)return;
@@ -1335,7 +1367,37 @@ const Native = {
   async bioVerify(){ const c=CAP(); if(!(c&&c.Plugins&&c.Plugins.NativeBiometric)) return true;
     try{ await c.Plugins.NativeBiometric.verifyIdentity({reason:(isRTL()?"افتح ميزان":"Unlock Mizan"),title:"Mizan",subtitle:"",description:(isRTL()?"استخدم بصمتك أو وجهك":"Use fingerprint or face"),useFallback:true,fallbackTitle:(isRTL()?"رمز الجهاز":"Use PIN"),maxAttempts:3}); return true; }
     catch(e){ return false; } },
+  async scheduleZakatDue(){ const c=CAP(); if(!(c&&c.Plugins&&c.Plugins.LocalNotifications))return;
+    try{ const held=S.zakatHeldSince||Date.now(),hawlLen=S.settings.hawlLen||354,at=held+hawlLen*86400000;
+      await c.Plugins.LocalNotifications.cancel({notifications:[{id:9002}]});
+      if(at>Date.now())await c.Plugins.LocalNotifications.schedule({notifications:[{id:9002,title:"Mizan · Zakat",body:(isRTL()?"اكتمل الحول — قد تجب الزكاة":"Your hawl year is complete — zakat may be due"),schedule:{at:new Date(at)}}]});
+    }catch(e){} },
+  applyStatusBar(){ const c=CAP(); if(!(c&&c.Plugins&&c.Plugins.StatusBar))return;
+    try{ const dark=S.settings.theme==='dark'; c.Plugins.StatusBar.setOverlaysWebView({overlay:false}); c.Plugins.StatusBar.setBackgroundColor({color:dark?'#101512':'#0B6B53'}); c.Plugins.StatusBar.setStyle({style:'LIGHT'}); }catch(e){} },
 };
+/* ------- v5: recurring, auto-backup, back button, search ------- */
+function applyRecurring(){
+  if(!S.recurring||!S.recurring.length)return 0;
+  const now=Date.now();let applied=0;
+  S.recurring.forEach(r=>{ if(!r.nextTs)r.nextTs=now; let g=0;
+    while(r.nextTs<=now && g<120){ const loc=S.locations.find(x=>x.id===r.locId); const sar=convert(r.amount,r.cur,'SAR');
+      if(r.kind==='income'){ if(loc)addToHolding(loc,r.cur,r.amount); const id=uid('inc'); S.income.push({id,ts:r.nextTs,shift:r.shift||1,amount:r.amount,cur:r.cur,locId:r.locId,sar,note:(r.note||'')+' ↻'}); pushHist('income',t('shift')+' '+(r.shift||1)+(loc?' → '+locName(loc):''),0,r.amount,r.cur,'inc:'+id); }
+      else { if(loc)addToHolding(loc,r.cur,-r.amount); const id=uid('exp'); S.expenses.push({id,ts:r.nextTs,amount:r.amount,cur:r.cur,locId:r.locId,cat:r.cat||'other',sar,note:(r.note||'')+' ↻'}); pushHist('expense',t('cat_'+(r.cat||'other'))+(loc?' · '+locName(loc):''),0,r.amount,r.cur,'exp:'+id); }
+      applied++; const d=new Date(r.nextTs); if(r.freq==='weekly')d.setDate(d.getDate()+7); else d.setMonth(d.getMonth()+1); r.nextTs=d.getTime(); g++; }
+  });
+  if(applied)save(); return applied;
+}
+async function autoBackup(){ const c=window.Capacitor; if(!(c&&c.isNativePlatform&&c.isNativePlatform()))return; if(!S.meta)S.meta={lastBackup:0};
+  if(Date.now()-(S.meta.lastBackup||0)<86400000)return;
+  try{ if(c.Plugins&&c.Plugins.Filesystem){ await c.Plugins.Filesystem.writeFile({path:"mizan-auto-backup.json",data:JSON.stringify(S),directory:"DOCUMENTS",encoding:"utf8",recursive:true}); S.meta.lastBackup=Date.now(); save(); } }catch(e){}
+}
+function setupBackButton(){ const c=window.Capacitor; if(!(c&&c.Plugins&&c.Plugins.App))return;
+  try{ c.Plugins.App.addListener('backButton',()=>{ if(document.querySelector('.scrim')){closeSheet();return;} if(typeof TAB!=='undefined'&&TAB!=='home'){go('home');return;} c.Plugins.App.exitApp(); }); }catch(e){}
+}
+document.addEventListener('input',e=>{ if(e.target&&e.target.id==='histSearch'){ const q=e.target.value.toLowerCase(); document.querySelectorAll('.hrow').forEach(r=>{ r.style.display=r.textContent.toLowerCase().includes(q)?'':'none'; }); } });
+function syncWidget(){ const c=window.Capacitor; if(!(c&&c.isNativePlatform&&c.isNativePlatform()&&c.Plugins&&c.Plugins.Preferences))return;
+  try{ const days=weekStrip().map(d=>d.future?'x':d.net>0?'g':d.net<0?'r':'x'); c.Plugins.Preferences.set({key:'mizan.week',value:JSON.stringify(days)});
+    if(c.Plugins.MizanWidget&&c.Plugins.MizanWidget.refresh)c.Plugins.MizanWidget.refresh(); }catch(e){} }
 /* weekly good/bad days (net = income − expenses per day) */
 function weekStrip(){
   const now=new Date(), day=(now.getDay()+6)%7, monday=new Date(now); monday.setHours(0,0,0,0); monday.setDate(monday.getDate()-day);

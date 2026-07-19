@@ -36,22 +36,21 @@ jobs:
       - name: Install Android build components
         run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Generate the Android project
-        run: npx cap add android
-
       - name: Point Gradle at the SDK
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
 
-      - name: Sync web app into Android
+      - name: Sync web app + plugins into the committed Android project
         run: npx cap sync android
 
       - name: Build the APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          set -o pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/build.log
 
       - name: Upload the APK (also downloadable from the Artifacts section)
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Mizan-APK
@@ -76,3 +75,21 @@ jobs:
           git commit -q -m "Mizan APK build [skip ci]"
           git branch -M apk
           git push -q -f "https://x-access-token:${TOKEN}@github.com/${REPO}.git" apk
+
+      - name: Publish build log to the buildlog branch (always, for debugging)
+        if: always()
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          rm -rf /tmp/logout && mkdir -p /tmp/logout
+          cp /tmp/build.log /tmp/logout/build.log 2>/dev/null || echo "no build log produced" > /tmp/logout/build.log
+          tail -c 120000 /tmp/logout/build.log > /tmp/logout/build.tail.log || true
+          cd /tmp/logout
+          git init -q
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git commit -q -m "build log [skip ci]"
+          git branch -M buildlog
+          git push -q -f "https://x-access-token:${TOKEN}@github.com/${REPO}.git" buildlog
