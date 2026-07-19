@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0B6B53">
 <title>Mizan — Wealth Tracker</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Fonts: native system stack — fully offline, no network fetch -->
 <style>
 :root{
   --bg:#F5F3EE; --page:#eceae4; --card:#ffffff; --sheet:#F7F6F2;
@@ -291,6 +289,10 @@ body{overflow:hidden;font-size:14px}
 .setrow .ic{width:34px;height:34px}
 .sect{font-size:11.5px}
 .sheet{max-height:88dvh}
+/* v4: larger tap targets */
+.fchip{min-height:38px}
+.smallbtn{min-height:40px}
+.link{padding:6px 3px}
 </style>
 </head>
 <body>
@@ -364,6 +366,12 @@ function deepMerge(base,ov){if(Array.isArray(base))return Array.isArray(ov)?ov:b
   if(base&&typeof base==="object"){const o={...base};for(const k in base)if(ov&&k in ov)o[k]=deepMerge(base[k],ov[k]);
     for(const k in(ov||{}))if(!(k in o))o[k]=ov[k];return o;}return ov===undefined?base:ov;}
 let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(()=>Store.set("mizan2.state",JSON.stringify(S)),120);}
+/* undo + haptics (v4) */
+let UNDO=null;
+function snap(){UNDO=JSON.stringify(S);}
+function doUndo(){if(!UNDO)return;try{S=JSON.parse(UNDO);}catch(e){return;}UNDO=null;save();applyTheme();applyLangDom();render();toast(t('undone'));}
+function undoToast(msg){toast(msg,t('undo'),doUndo);}
+function haptic(style){const c=window.Capacitor;if(c&&c.Plugins&&c.Plugins.Haptics){try{c.Plugins.Haptics.impact({style:style||'MEDIUM'});}catch(e){}}}
 
 /* ------- currency engine (YER-N pivot; user-entered rates) ------- */
 function rSar(){return S.rates.sarYern>0?S.rates.sarYern:140;}
@@ -426,7 +434,7 @@ const I18N={en:{
   nisab:"Niṣāb (SAR)",primaryCurrency:"Primary currency",zakatRate:"Zakat rate (%)",hawlLength:"Ḥawl length (days)",reminderDayLbl:"Reminder day",
   biometric:"Biometric lock",biometricD:"Fingerprint / Face ID to open",remindersLbl:"Weekly reminder",remindersD:"Remind me to log balances",
   autoCp:"Auto-checkpoint",autoCpD:"Snapshot when total changes",darkMode:"Dark mode",darkModeD:"Easier on the eyes at night",
-  lockTimeout:"Auto-lock",exportData:"Export data (JSON)",resetData:"Reset everything",
+  lockTimeout:"Auto-lock",exportData:"Export data (JSON)",exportCsv:"Export CSV (transactions)",undo:"Undo",undone:"Restored",resetData:"Reset everything",
   locker:"Locker denominations",lockerSub:"Count notes by denomination",lockerTotal:"Locker total",
   goodLabel:"At / above target",belowLabel:"Below target",perWeek:"Week",perMonth:"Month",
   tagIncome:"Income",tagRebalance:"Rebalance",tagCorrection:"Correction",baseline:"Baseline",
@@ -464,7 +472,7 @@ const I18N={en:{
   nisab:"النصاب (ريال)",primaryCurrency:"العملة الرئيسية",zakatRate:"نسبة الزكاة (%)",hawlLength:"طول الحول (يوم)",reminderDayLbl:"يوم التذكير",
   biometric:"القفل البيومتري",biometricD:"بصمة / وجه للفتح",remindersLbl:"تذكير أسبوعي",remindersD:"ذكّرني بتسجيل الأرصدة",
   autoCp:"نقطة تلقائية",autoCpD:"التقاط عند تغيّر الإجمالي",darkMode:"الوضع الليلي",darkModeD:"أرفق بالعينين ليلاً",
-  lockTimeout:"القفل التلقائي",exportData:"تصدير البيانات",resetData:"إعادة تعيين الكل",
+  lockTimeout:"القفل التلقائي",exportData:"تصدير البيانات",exportCsv:"تصدير CSV",undo:"تراجع",undone:"تمت الاستعادة",resetData:"إعادة تعيين الكل",
   locker:"فئات الخزنة",lockerSub:"عدّ الأوراق حسب الفئة",lockerTotal:"إجمالي الخزنة",
   goodLabel:"عند/فوق الهدف",belowLabel:"دون الهدف",perWeek:"أسبوع",perMonth:"شهر",
   tagIncome:"دخل",tagRebalance:"إعادة توزيع",tagCorrection:"تصحيح",baseline:"الأساس",
@@ -869,6 +877,7 @@ function viewSettings(){
     <div class="setrow"><div style="flex:1;font-size:13.5px;font-weight:600">1 SAR = ? YER-N</div><input class="finp num" data-rate="sarYern" value="${fmt(r.sarYern,0)}" inputmode="decimal" style="width:96px;text-align:end"></div>
     <div class="setrow"><div style="flex:1;font-size:13.5px;font-weight:600">1 USD = ? YER-S</div><input class="finp num" data-rate="usdYers" value="${fmt(r.usdYers,0)}" inputmode="decimal" style="width:96px;text-align:end"></div>
     <div class="derived"><div class="t">${t('derived')} · 1 USD</div><div class="v num" data-total="usdsar">${fmt(usdToSar(),2)} SAR</div></div>
+    ${(()=>{const h=S.rateHistory;if(!h||!h.length)return'';const d=Math.floor((Date.now()-h[h.length-1].ts)/DAY);const stale=d>=14;const txt=d<=0?(isRTL()?'حُدّثت الأسعار اليوم':'Rates updated today'):(isRTL()?('آخر تحديث قبل '+d+' يوم'):('Rates last updated '+d+' day'+(d===1?'':'s')+' ago'));return`<div class="setrow" style="gap:8px"><div style="flex:1;font-size:11.5px;font-weight:600;color:${stale?'var(--neg)':'var(--muted)'}">${stale?'⚠ ':''}${txt}</div></div>`;})()}
     ${S.rateHistory&&S.rateHistory.length?`<div class="setrow" style="flex-direction:column;align-items:stretch;gap:5px"><div style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em">${t('rateHistory')}</div>${S.rateHistory.slice(-5).reverse().map(h=>`<div class="row" style="justify-content:space-between;font-size:11px"><span class="muted">${fmtDate(h.ts)}</span><span class="num" style="font-weight:700">$${fmt(h.usdYern,0)} · ﷼${fmt(h.sarYern,0)} · S${fmt(h.usdYers,0)}</span></div>`).join("")}</div>`:""}
   </div></div>
 
@@ -886,6 +895,7 @@ function viewSettings(){
       <select class="fsel" data-sel="lockTimeout">${tos.map(o=>`<option value="${o}" ${S.settings.lockTimeout===o?'selected':''}>${o}</option>`).join("")}</select></div>
     <button class="setrow" data-act="backupLocal" style="width:100%;text-align:start;color:var(--green-ink);font-weight:700;font-size:14px">${isRTL()?'نسخة احتياطية على الجهاز':'Back up to device'}</button>
     <button class="setrow" data-act="backupDrive" style="width:100%;text-align:start;color:var(--green-ink);font-weight:700;font-size:14px">${isRTL()?'نسخة احتياطية إلى Google Drive':'Back up to Google Drive'}</button>
+    <button class="setrow" data-act="exportCsv" style="width:100%;text-align:start;color:var(--green-ink);font-weight:700;font-size:14px">${t('exportCsv')}</button>
     <label class="setrow" style="width:100%;text-align:start;color:var(--green-ink);font-weight:700;font-size:14px;cursor:pointer;display:block">${t('importData')}<input type="file" id="importFile" accept="application/json,.json" style="display:none"></label>
     <button class="setrow" data-act="reset" style="width:100%;text-align:start;color:var(--neg);font-weight:700;font-size:14px;border-bottom:none">${t('resetData')}</button>
   </div></div>
@@ -1104,7 +1114,7 @@ function handleAct(a,el){const id=el&&el.dataset?el.dataset.id:null;switch(a){
     pushHist(EDKIND==='real'?'edit':'correction',nm,Math.round(oldSar),Math.round(locSar(l)),'SAR','loc:'+id);save();closeSheet();render();
     if(EDKIND==='real'){toast(t('balanceUpdated'),t('checkpoint'),doCheckpoint);scheduleAutoCp();}else toast(t('loggedCorrection'));break;}
   case"editHide":{const l=S.locations.find(x=>x.id===id);l.hidden=!l.hidden;save();closeSheet();render();toast(l.hidden?t('placeHidden'):t('placeShown'));break;}
-  case"editDelete":{const l=S.locations.find(x=>x.id===id);S.locations=S.locations.filter(x=>x.id!==id);save();closeSheet();render();toast(t('deleted')+' '+(l?locName(l):''));break;}
+  case"editDelete":{snap();const l=S.locations.find(x=>x.id===id);S.locations=S.locations.filter(x=>x.id!==id);save();closeSheet();render();undoToast(t('deleted')+' '+(l?locName(l):''));break;}
   case"transferSave":{const from=S.locations.find(l=>l.id===gv('trFrom')),to=S.locations.find(l=>l.id===gv('trTo'));const amt=parseNum(gv('trAmt')),cur=gv('trCur');
     if(!from||!to||from.id===to.id||!amt){closeSheet();break;}
     const fromH=(from.holdings||[]).find(h=>h.cur===cur),avail=fromH?(+fromH.amount||0):0;
@@ -1124,22 +1134,23 @@ function handleAct(a,el){const id=el&&el.dataset?el.dataset.id:null;switch(a){
     const sar=convert(amt,cur,'SAR'),expId=uid('exp');S.expenses.push({id:expId,ts,amount:amt,cur,locId,cat:EXP_CAT,sar,note});
     pushHist('expense',t('cat_'+EXP_CAT)+(loc?' · '+locName(loc):''),0,amt,cur,'exp:'+expId);save();closeSheet();render();toast(t('expenseLogged')+' · −'+money(sar,'SAR')+' SAR');break;}
   case"lockerDone":save();closeSheet();render();toast(t('saved_t'));break;
-  case"histDelete":{const h=S.history.find(x=>x.id===id);if(h){
+  case"histDelete":{snap();const h=S.history.find(x=>x.id===id);if(h){
       if(h.field&&h.field.indexOf('inc:')===0){const e=S.income.find(x=>x.id===h.field.slice(4));if(e){const loc=S.locations.find(l=>l.id===e.locId);if(loc)addToHolding(loc,e.cur,-e.amount);S.income=S.income.filter(x=>x.id!==e.id);}}
       else if(h.field&&h.field.indexOf('exp:')===0){const e=S.expenses.find(x=>x.id===h.field.slice(4));if(e){const loc=S.locations.find(l=>l.id===e.locId);if(loc)addToHolding(loc,e.cur,e.amount);S.expenses=S.expenses.filter(x=>x.id!==e.id);}}
-      S.history=S.history.filter(x=>x.id!==id);}save();closeSheet();render();toast(t('deleted'));break;}
+      S.history=S.history.filter(x=>x.id!==id);}save();closeSheet();render();undoToast(t('deleted'));break;}
   case"goalSave":{const nm=gv('glName').trim();if(!nm){closeSheet();break;}const target=parseNum(gv('glTarget')),saved=parseNum(gv('glSaved')),cur=gv('glCur');
     if(id){const g=S.goals.find(x=>x.id===id);g.name=nm;g.nameAr=nm;g.target=target;g.saved=saved;g.cur=cur;}
     else S.goals.push({id:uid('g'),name:nm,nameAr:nm,icon:'target',cur,target,saved});save();closeSheet();render();toast(id?t('saved_t'):t('goalAdded'));break;}
-  case"goalDelete":S.goals=S.goals.filter(g=>g.id!==id);save();closeSheet();render();toast(t('deleted'));break;
+  case"goalDelete":snap();S.goals=S.goals.filter(g=>g.id!==id);save();closeSheet();render();undoToast(t('deleted'));break;
   case"cpSave":{const c=S.log.find(x=>x.id===id);if(c){c.totalSar=parseNum(gv('cpTot'));const dv=gv('cpDate');if(dv)c.ts=new Date(dv+'T12:00:00').getTime();c.type=gv('cpType');}save();closeSheet();render();toast(t('saved_t'));break;}
-  case"cpDelete":S.log=S.log.filter(x=>x.id!==id);save();closeSheet();render();toast(t('deleted'));break;
+  case"cpDelete":snap();S.log=S.log.filter(x=>x.id!==id);save();closeSheet();render();undoToast(t('deleted'));break;
   case"export":exportData();break;
+  case"exportCsv":exportCSV();break;
   case"backupLocal":Native.backupLocal();break;
   case"backupDrive":Native.backupDrive();break;
   case"printStmt":printStatement();break;
   case"reset":openSheet(sheetReset());break;
-  case"doReset":{const lang=S.settings.lang,theme=S.settings.theme;S=defaults();S.settings.lang=lang;S.settings.theme=theme;S.settings.onboarded=true;save();TAB='home';closeSheet();render();toast(t('resetDone'));break;}
+  case"doReset":{snap();const lang=S.settings.lang,theme=S.settings.theme;S=defaults();S.settings.lang=lang;S.settings.theme=theme;S.settings.onboarded=true;save();TAB='home';closeSheet();render();undoToast(t('resetDone'));break;}
   case"closeSheet":closeSheet();break;
   case"toastAction":if(PENDING){const fn=PENDING;PENDING=null;hideToast();fn();}break;
   case"onbSample":loadDemo();closeSheet();TAB='home';render();break;
@@ -1151,7 +1162,7 @@ function applySel(key,val){S.settings[key]=val;save();if(key==='primaryCur')rend
 
 /* ------- toast ------- */
 let toastT;
-function toast(msg,actionLabel,fn){const e=document.getElementById("toast");PENDING=fn||null;
+function toast(msg,actionLabel,fn){const e=document.getElementById("toast");PENDING=fn||null;haptic('LIGHT');
   e.innerHTML=`<span style="color:var(--toast-accent)">${icon('check',18,2.2)}</span><span class="tmsg" style="flex:1">${esc(msg)}</span>${actionLabel?`<button class="taction" data-act="toastAction">${esc(actionLabel)}</button>`:""}`;
   e.classList.add("show");clearTimeout(toastT);toastT=setTimeout(hideToast,fn?4600:2200);}
 function hideToast(){document.getElementById("toast").classList.remove("show");}
@@ -1167,6 +1178,18 @@ function showChartTip(el){const wrap=el.closest(".chartwrap");if(!wrap)return;co
 
 /* ------- export / demo ------- */
 function exportData(){try{const b=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="mizan-data.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);toast(t('saved_t'));}catch(e){toast("Export not available here");}}
+async function exportCSV(){
+  const q=v=>{v=(v==null?'':''+v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  const rows=[["Type","Date","Category/Shift","Amount","Currency","SAR","Place","Note"]];
+  S.income.forEach(e=>{const l=S.locations.find(x=>x.id===e.locId);rows.push(["Income",new Date(e.ts).toISOString().slice(0,10),"Shift "+e.shift,e.amount,e.cur,Math.round(e.sar),l?l.name:"",e.note||""]);});
+  S.expenses.forEach(e=>{const l=S.locations.find(x=>x.id===e.locId);rows.push(["Expense",new Date(e.ts).toISOString().slice(0,10),e.cat,e.amount,e.cur,Math.round(e.sar),l?l.name:"",e.note||""]);});
+  const csv=rows.map(r=>r.map(q).join(",")).join("\n");
+  const c=window.Capacitor;
+  if(c&&c.isNativePlatform&&c.isNativePlatform()&&c.Plugins&&c.Plugins.Filesystem&&c.Plugins.Share){
+    try{const res=await c.Plugins.Filesystem.writeFile({path:"mizan-transactions.csv",data:csv,directory:"CACHE",encoding:"utf8"});await c.Plugins.Share.share({title:"Mizan transactions",url:res.uri,dialogTitle:(isRTL()?"تصدير CSV":"Export CSV")});return;}catch(e){}
+  }
+  try{const b=new Blob([csv],{type:"text/csv"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="mizan-transactions.csv";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);toast(t('saved_t'));}catch(e){toast("Export not available here");}
+}
 function importFromFile(el){const f=el.files&&el.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const obj=JSON.parse(rd.result);if(!obj||!obj.locations||!obj.settings)throw 0;S=deepMerge(defaults(),obj);migrateLocs();save();TAB='home';applyTheme();applyLangDom();render();toast(t('importDone'));}catch(e){toast(t('importBad'));}};rd.readAsText(f);}
 function logRate(){const c={usdYern:S.rates.usdYern,sarYern:S.rates.sarYern,usdYers:S.rates.usdYers},last=S.rateHistory[S.rateHistory.length-1];if(!last||last.usdYern!==c.usdYern||last.sarYern!==c.sarYern||last.usdYers!==c.usdYers){S.rateHistory.push({ts:Date.now(),...c});if(S.rateHistory.length>100)S.rateHistory.shift();}}
 function loadDemo(){const lang=S.settings.lang,theme=S.settings.theme;S=defaults();S.settings.lang=lang;S.settings.theme=theme;S.settings.onboarded=true;
