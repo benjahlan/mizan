@@ -12,6 +12,7 @@
     "@capacitor/local-notifications": "^6.1.0",
     "@capacitor/filesystem": "^6.0.1",
     "@capacitor/share": "^6.0.2",
-    "@capacitor/preferences": "^6.0.2"
+    "@capacitor/preferences": "^6.0.2",
+    "@capgo/capacitor-native-biometric": "6.0.4"
   }
 }

@@ -437,7 +437,7 @@ const I18N={en:{
   checkpointSaved:"Checkpoint saved",goalAdded:"Goal added",balanceAdded:"Balance added",placeHidden:"Place hidden — excluded from totals",placeShown:"Place shown again",
   deleted:"Deleted",resetDone:"Reset done — fresh start",saved_t:"Saved",cannotToday:"Today",welcome:"Welcome to Mizan",
   onbo:"Track cash across every place and currency, watch it grow, and calculate zakat — all offline.",useSample:"Explore sample data",startEmpty:"Start empty",
-  confirmReset:"Erase all data and start fresh?",reset:"Reset",unlockTap:"Tap to unlock",locked:"Mizan is locked",
+  confirmReset:"Erase all data and start fresh?",reset:"Reset",unlockTap:"Tap to unlock",unlockRetry:"Tap to try again",locked:"Mizan is locked",
   moreGoals:"Track targets with progress",moreHistory:"Every change, timestamped",moreSettings:"Rates, currency, preferences",
   all:"All",edits:"Edits",transfers:"Transfers",checkpoints:"Checkpoints",noHistory:"No changes recorded yet",noCheckpoints:"No checkpoints yet",firstCp:"Save your first checkpoint to track growth.",
   addIncome:"Add income",incomeSub:"Log earnings by shift — adds to a balance.",shift:"Shift",toBalance:"To balance",todayIncome:"Today's income",todayTotal:"Today",incomeLogged:"Income logged",incomeByShift:"Income by shift",last30d:"Last 30 days",activityT:"Activity",deleteEntry:"Delete entry",noIncome:"No income logged yet",incomeLbl:"Income",reverseNote:"Deleting reverses the balance change.",note:"Note",income_nav:"Income",existingHint:"Adds to %s",newHint:"New balance. Add more currencies later by tapping it.",
@@ -475,7 +475,7 @@ const I18N={en:{
   checkpointSaved:"تم حفظ النقطة",goalAdded:"تمت إضافة الهدف",balanceAdded:"تمت إضافة الرصيد",placeHidden:"تم الإخفاء — مستثنى من الإجمالي",placeShown:"تم الإظهار",
   deleted:"تم الحذف",resetDone:"تمت إعادة التعيين",saved_t:"تم الحفظ",cannotToday:"اليوم",welcome:"مرحباً بك في ميزان",
   onbo:"تتبّع نقدك في كل مكان وعملة، وراقب نموّه، واحسب زكاتك — دون إنترنت.",useSample:"استكشف ببيانات تجريبية",startEmpty:"ابدأ فارغاً",
-  confirmReset:"مسح كل البيانات والبدء من جديد؟",reset:"تصفير",unlockTap:"اضغط للفتح",locked:"ميزان مُقفل",
+  confirmReset:"مسح كل البيانات والبدء من جديد؟",reset:"تصفير",unlockTap:"اضغط للفتح",unlockRetry:"اضغط للمحاولة مجدداً",locked:"ميزان مُقفل",
   moreGoals:"تتبّع الأهداف بالتقدّم",moreHistory:"كل تغيير موثّق بالوقت",moreSettings:"الأسعار والعملة والتفضيلات",
   all:"الكل",edits:"تعديلات",transfers:"تحويلات",checkpoints:"نقاط",noHistory:"لا تغييرات مسجّلة",noCheckpoints:"لا نقاط بعد",firstCp:"احفظ أول نقطة لتتبّع النمو.",
   addIncome:"إضافة دخل",incomeSub:"سجّل الدخل حسب الوردية — يُضاف إلى رصيد.",shift:"وردية",toBalance:"إلى الرصيد",todayIncome:"دخل اليوم",todayTotal:"اليوم",incomeLogged:"تم تسجيل الدخل",incomeByShift:"الدخل حسب الوردية",last30d:"آخر 30 يوماً",activityT:"سجل",deleteEntry:"حذف السجل",noIncome:"لا دخل مسجّل بعد",incomeLbl:"دخل",reverseNote:"الحذف يُلغي تغيير الرصيد.",note:"ملاحظة",income_nav:"الدخل",existingHint:"يُضاف إلى %s",newHint:"رصيد جديد. أضف عملات أخرى لاحقاً بالضغط عليه.",
@@ -1202,10 +1202,28 @@ function applyTheme(){document.documentElement.setAttribute("data-theme",S.setti
 function applyLangDom(){const l=S.settings.lang;document.documentElement.lang=l==='ar'?'ar':'en';document.documentElement.dir=l==='ar'?'rtl':'ltr';
   document.getElementById("lockT").textContent=t('locked');document.getElementById("lockP").textContent=t('unlockTap');}
 
+/* ------- biometric unlock gate ------- */
+async function tryUnlock(){
+  const lock=document.getElementById("lock");
+  if(!CAP()){ lock.hidden=true; return; }                       // browser: never lock
+  if(!(await Native.bioAvailable())){ lock.hidden=true; return; } // no enrolled biometric: don't lock out
+  document.getElementById("lockP").textContent=t('unlockTap');
+  const ok=await Native.bioVerify();
+  if(ok){ lock.hidden=true; } else { document.getElementById("lockP").textContent=t('unlockRetry'); }
+}
+let _hidAt=0;
+document.addEventListener("visibilitychange",()=>{
+  if(!(S.settings.biometric && CAP())) return;
+  if(document.visibilityState==="hidden"){ _hidAt=Date.now(); return; }
+  if(S.settings.lockTimeout==="Never") return;
+  const mins={"Immediately":0,"1 min":1,"5 min":5,"30 min":30}[S.settings.lockTimeout]||0;
+  if(Date.now()-_hidAt >= mins*60000){ document.getElementById("lock").hidden=false; tryUnlock(); }
+});
+
 /* ------- init ------- */
 function init(){load();applyTheme();applyLangDom();
-  if(S.settings.biometric)document.getElementById("lock").hidden=false;
-  document.getElementById("fpBtn").onclick=()=>{document.getElementById("lock").hidden=true;};
+  if(S.settings.biometric && CAP()){ document.getElementById("lock").hidden=false; tryUnlock(); }
+  document.getElementById("fpBtn").onclick=()=>{ tryUnlock(); };
 
   document.body.addEventListener("click",e=>{
     if(e.target.closest("#langBtn")){S.settings.lang=isRTL()?'en':'ar';save();applyLangDom();render();return;}
@@ -1289,6 +1307,11 @@ const Native = {
   },
   async cancelWeekly(){ const c=CAP(); if(c && c.Plugins && c.Plugins.LocalNotifications){ try{ await c.Plugins.LocalNotifications.cancel({notifications:[{id:9001}]}); }catch(e){} } },
   syncReminder(){ if(!this.isNative())return; if(S.settings.reminders) this.scheduleWeekly(); else this.cancelWeekly(); },
+  async bioAvailable(){ const c=CAP(); if(!(c&&c.Plugins&&c.Plugins.NativeBiometric)) return false;
+    try{ const r=await c.Plugins.NativeBiometric.isAvailable(); return !!(r&&r.isAvailable); }catch(e){ return false; } },
+  async bioVerify(){ const c=CAP(); if(!(c&&c.Plugins&&c.Plugins.NativeBiometric)) return true;
+    try{ await c.Plugins.NativeBiometric.verifyIdentity({reason:(isRTL()?"افتح ميزان":"Unlock Mizan"),title:"Mizan",subtitle:"",description:(isRTL()?"استخدم بصمتك أو وجهك":"Use fingerprint or face"),useFallback:true,fallbackTitle:(isRTL()?"رمز الجهاز":"Use PIN"),maxAttempts:3}); return true; }
+    catch(e){ return false; } },
 };
 /* weekly good/bad days (net = income − expenses per day) */
 function weekStrip(){
