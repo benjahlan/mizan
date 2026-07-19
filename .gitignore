@@ -1,0 +1,11 @@
+# Dependencies (CI installs these fresh)
+node_modules/
+
+# Local build output / caches
+.gradle/
+dist/
+build/
+
+# OS / editor junk
+.DS_Store
+*.log
