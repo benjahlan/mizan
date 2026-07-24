@@ -326,7 +326,8 @@ function defaults(){
     v:2,
     settings:{lang:"en",theme:"light",primaryCur:"SAR",zakatRate:2.5,hawlLen:354,reminderDay:"Friday",
       reminders:true,biometric:false,autoCheckpoint:true,lockTimeout:"Immediately",onboarded:false,nisabSar:2000,
-      nisabBasis:"silver",silverPrice:3.2,goldPrice:300,hijri:false,arabicDigits:false},
+      nisabBasis:"silver",silverPrice:3.2,goldPrice:300,hijri:false,arabicDigits:false,
+      localBackupMode:"overwrite",driveBackupMode:"manual",driveFolderUri:null,driveFolderName:null},
     rates:{usdYern:530,sarYern:140,usdYers:1650},
     locations:[
       {id:"bag",name:"Bag",nameAr:"الحقيبة",icon:"bag",holdings:[{cur:"SAR",amount:0}],eligible:true,changed:Date.now()},
@@ -458,6 +459,10 @@ const I18N={en:{
   rateHistory:"Rate history",noRateHist:"No rate changes yet",nisabBasis:"Niṣāb basis",silver:"Silver",gold:"Gold",customB:"Custom",pricePerGram:"Price / gram (SAR)",hijriDates:"Hijri dates",hijriD:"Show Islamic-calendar dates",arabicNumerals:"Arabic numerals",arabicNumeralsD:"٠١٢ instead of 012",print:"Print / Save PDF",
   cat_food:"Food",cat_rent:"Rent",cat_bills:"Bills",cat_medical:"Medical",cat_transport:"Transport",cat_family:"Family",cat_other:"Other",
   totalIncome:"Income",totalExpenses:"Expenses",netFlow:"Net flow",netWorthChange:"Net-worth Δ",noExpense:"No expenses logged yet",moreStatement:"Income, expenses & net by month",dueNow:"Zakat is due now",
+  expenseName:"What was it for?",expenseNamePh:"e.g. Groceries, Taxi, Electricity bill",
+  localBackupMode:"Local backup file",bkOverwrite:"Update same file",bkDated:"Keep dated copies",
+  driveBackupMode:"Google Drive backup",bkManual:"Share each time",bkAuto:"Automatic (choose folder once)",
+  driveFolder:"Drive folder",notSet:"Not set",change:"Change",
 },ar:{
   appSub:"متتبّع الثروة",netWorth:"صافي الثروة",saveCheckpoint:"حفظ نقطة",transfer:"تحويل",add:"إضافة",addBalance:"إضافة رصيد",
   zakatDue:"الزكاة المستحقة",recentActivity:"النشاط الأخير",viewAll:"عرض الكل",grandTotal:"الإجمالي الكلي",
@@ -496,6 +501,10 @@ const I18N={en:{
   rateHistory:"سجل الأسعار",noRateHist:"لا تغييرات في الأسعار",nisabBasis:"أساس النصاب",silver:"فضة",gold:"ذهب",customB:"مخصّص",pricePerGram:"السعر / غرام (ريال)",hijriDates:"التاريخ الهجري",hijriD:"عرض التواريخ بالتقويم الهجري",arabicNumerals:"الأرقام العربية",arabicNumeralsD:"٠١٢ بدل 012",print:"طباعة / حفظ PDF",
   cat_food:"طعام",cat_rent:"إيجار",cat_bills:"فواتير",cat_medical:"طبي",cat_transport:"مواصلات",cat_family:"عائلة",cat_other:"أخرى",
   totalIncome:"الدخل",totalExpenses:"المصروفات",netFlow:"الصافي",netWorthChange:"تغيّر الثروة",noExpense:"لا مصروفات مسجّلة",moreStatement:"الدخل والمصروفات والصافي شهرياً",dueNow:"الزكاة مستحقة الآن",
+  expenseName:"على ماذا كان الصرف؟",expenseNamePh:"مثلاً: بقالة، مواصلات، فاتورة كهرباء",
+  localBackupMode:"ملف النسخ الاحتياطي المحلي",bkOverwrite:"تحديث نفس الملف",bkDated:"الاحتفاظ بنسخ مؤرّخة",
+  driveBackupMode:"نسخ Google Drive الاحتياطي",bkManual:"مشاركة في كل مرة",bkAuto:"تلقائي (اختر مجلداً مرة واحدة)",
+  driveFolder:"مجلد Drive",notSet:"غير محدد",change:"تغيير",
 }};
 function t(k){const l=S.settings.lang;return(I18N[l]&&I18N[l][k])??I18N.en[k]??k;}
 function tf(k,...a){let s=t(k);a.forEach(x=>s=s.replace("%s",x));return s;}
@@ -905,7 +914,12 @@ function viewSettings(){
   <div class="setgrp"><div class="sect">${t('data')}</div><div class="setcard">
     <div class="setrow"><div style="flex:1;font-size:13.5px;font-weight:600">${t('lockTimeout')}</div>
       <select class="fsel" data-sel="lockTimeout">${tos.map(o=>`<option value="${o}" ${S.settings.lockTimeout===o?'selected':''}>${o}</option>`).join("")}</select></div>
+    <div class="setrow"><div style="flex:1;font-size:13.5px;font-weight:600">${t('localBackupMode')}</div>
+      <select class="fsel" data-sel="localBackupMode"><option value="overwrite" ${S.settings.localBackupMode!=='dated'?'selected':''}>${t('bkOverwrite')}</option><option value="dated" ${S.settings.localBackupMode==='dated'?'selected':''}>${t('bkDated')}</option></select></div>
     <button class="setrow" data-act="backupLocal" style="width:100%;text-align:start;color:var(--green-ink);font-weight:700;font-size:14px">${isRTL()?'نسخة احتياطية على الجهاز':'Back up to device'}</button>
+    <div class="setrow"><div style="flex:1;font-size:13.5px;font-weight:600">${t('driveBackupMode')}</div>
+      <select class="fsel" data-sel="driveBackupMode"><option value="manual" ${S.settings.driveBackupMode!=='auto'?'selected':''}>${t('bkManual')}</option><option value="auto" ${S.settings.driveBackupMode==='auto'?'selected':''}>${t('bkAuto')}</option></select></div>
+    ${S.settings.driveBackupMode==='auto'?`<div class="setrow"><div style="flex:1;font-size:12px;color:var(--muted);font-weight:600">${t('driveFolder')}: <b style="color:var(--ink-2)">${S.settings.driveFolderName?esc(S.settings.driveFolderName):t('notSet')}</b></div><button class="smallbtn" data-act="pickDriveFolder">${t('change')}</button></div>`:``}
     <button class="setrow" data-act="backupDrive" style="width:100%;text-align:start;color:var(--green-ink);font-weight:700;font-size:14px">${isRTL()?'نسخة احتياطية إلى Google Drive':'Back up to Google Drive'}</button>
     <button class="setrow" data-act="exportCsv" style="width:100%;text-align:start;color:var(--green-ink);font-weight:700;font-size:14px">${t('exportCsv')}</button>
     <label class="setrow" style="width:100%;text-align:start;color:var(--green-ink);font-weight:700;font-size:14px;cursor:pointer;display:block">${t('importData')}<input type="file" id="importFile" accept="application/json,.json" style="display:none"></label>
@@ -1053,6 +1067,8 @@ function sheetIncome(){INC_SHIFT=1;
     <div class="sbtns"><button class="sbtn ghost" data-act="closeSheet">${t('cancel')}</button><button class="sbtn pri" data-act="incSave">${t('save')}</button></div>`;}
 function sheetExpense(){EXP_CAT="food";
   return`<h3>${t('addExpense')}</h3><div class="sub">${t('expenseSub')}</div>
+    <div class="flabel">${t('expenseName')}</div>
+    <input class="tin" id="expName" placeholder="${t('expenseNamePh')}">
     <div class="flabel">${t('category')}</div>
     <div class="row" style="gap:6px;flex-wrap:wrap">${EXP_CATS.map(c=>`<button class="fchip ${c==='food'?'on':''}" data-expcat="${c}">${t('cat_'+c)}</button>`).join("")}</div>
     <div class="flabel">${isRTL()?'المبلغ والعملة':'Amount & currency'}</div>
@@ -1156,10 +1172,11 @@ function handleAct(a,el){const id=el&&el.dataset?el.dataset.id:null;switch(a){
     const dv=gv('incDate'),ts=dv?new Date(dv+'T12:00:00').getTime():Date.now();const loc=S.locations.find(x=>x.id===locId);if(loc)addToHolding(loc,cur,amt);
     const sar=convert(amt,cur,'SAR'),incId=uid('inc');S.income.push({id:incId,ts,shift:INC_SHIFT,amount:amt,cur,locId,sar,note});
     pushHist('income',t('shift')+' '+INC_SHIFT+(loc?' → '+locName(loc):''),0,amt,cur,'inc:'+incId);save();closeSheet();render();toast(t('incomeLogged')+' · +'+money(sar,'SAR')+' SAR');break;}
-  case"expSave":{const amt=parseNum(gv('expAmt'));if(!amt){closeSheet();break;}const cur=gv('expCur'),locId=gv('expLoc'),note=gv('expNote').trim();
+  case"expSave":{const amt=parseNum(gv('expAmt'));if(!amt){closeSheet();break;}const cur=gv('expCur'),locId=gv('expLoc'),note=gv('expNote').trim(),nm=gv('expName').trim();
     const dv=gv('expDate'),ts=dv?new Date(dv+'T12:00:00').getTime():Date.now();const loc=S.locations.find(x=>x.id===locId);if(loc)addToHolding(loc,cur,-amt);
-    const sar=convert(amt,cur,'SAR'),expId=uid('exp');S.expenses.push({id:expId,ts,amount:amt,cur,locId,cat:EXP_CAT,sar,note});
-    pushHist('expense',t('cat_'+EXP_CAT)+(loc?' · '+locName(loc):''),0,amt,cur,'exp:'+expId);save();closeSheet();render();toast(t('expenseLogged')+' · −'+money(sar,'SAR')+' SAR');break;}
+    const sar=convert(amt,cur,'SAR'),expId=uid('exp');S.expenses.push({id:expId,ts,amount:amt,cur,locId,cat:EXP_CAT,sar,note,name:nm});
+    const title=(nm?nm+' · ':'')+t('cat_'+EXP_CAT)+(loc?' · '+locName(loc):'');
+    pushHist('expense',title,0,amt,cur,'exp:'+expId);save();closeSheet();render();toast(t('expenseLogged')+' · −'+money(sar,'SAR')+' SAR');break;}
   case"lockerDone":save();closeSheet();render();toast(t('saved_t'));break;
   case"histDelete":{snap();const h=S.history.find(x=>x.id===id);if(h){
       if(h.field&&h.field.indexOf('inc:')===0){const e=S.income.find(x=>x.id===h.field.slice(4));if(e){const loc=S.locations.find(l=>l.id===e.locId);if(loc)addToHolding(loc,e.cur,-e.amount);S.income=S.income.filter(x=>x.id!==e.id);}}
@@ -1178,6 +1195,7 @@ function handleAct(a,el){const id=el&&el.dataset?el.dataset.id:null;switch(a){
   case"exportCsv":exportCSV();break;
   case"backupLocal":Native.backupLocal();break;
   case"backupDrive":Native.backupDrive();break;
+  case"pickDriveFolder":Native.pickDriveFolder().then(r=>{if(r&&r.uri){S.settings.driveFolderUri=r.uri;S.settings.driveFolderName=r.name||'';save();render();toast(isRTL()?'تم اختيار المجلد':'Folder selected');Native.writeDriveBackupSilent();}else{toast(isRTL()?'لم يتم اختيار مجلد':'No folder selected');}});break;
   case"printStmt":printStatement();break;
   case"zakatPaid":{snap();const z=computeZakat();if(!S.zakatPaid)S.zakatPaid=[];S.zakatPaid.push({ts:Date.now(),sar:Math.round(z.due),note:''});S.zakatHeldSince=Date.now();save();render();Native.scheduleZakatDue();undoToast((isRTL()?'سُجّلت الزكاة · ':'Zakat recorded · ')+money(z.due,'SAR')+' SAR');break;}
   case"reset":openSheet(sheetReset());break;
@@ -1189,7 +1207,8 @@ function handleAct(a,el){const id=el&&el.dataset?el.dataset.id:null;switch(a){
 }}
 function toggleSet(key){if(key==='theme'){S.settings.theme=S.settings.theme==='dark'?'light':'dark';save();applyTheme();render();return;}
   S.settings[key]=!S.settings[key];save();render();if(key==='reminders')Native.syncReminder();}
-function applySel(key,val){S.settings[key]=val;save();if(key==='primaryCur')render();if(key==='reminderDay'&&S.settings.reminders)Native.syncReminder();}
+function applySel(key,val){S.settings[key]=val;save();if(key==='primaryCur')render();if(key==='reminderDay'&&S.settings.reminders)Native.syncReminder();
+  if(key==='driveBackupMode'){render();if(val==='auto'&&!S.settings.driveFolderUri)handleAct('pickDriveFolder',null);}}
 
 /* ------- toast ------- */
 let toastT;
@@ -1211,9 +1230,9 @@ function showChartTip(el){const wrap=el.closest(".chartwrap");if(!wrap)return;co
 function exportData(){try{const b=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="mizan-data.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);toast(t('saved_t'));}catch(e){toast("Export not available here");}}
 async function exportCSV(){
   const q=v=>{v=(v==null?'':''+v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-  const rows=[["Type","Date","Category/Shift","Amount","Currency","SAR","Place","Note"]];
-  S.income.forEach(e=>{const l=S.locations.find(x=>x.id===e.locId);rows.push(["Income",new Date(e.ts).toISOString().slice(0,10),"Shift "+e.shift,e.amount,e.cur,Math.round(e.sar),l?l.name:"",e.note||""]);});
-  S.expenses.forEach(e=>{const l=S.locations.find(x=>x.id===e.locId);rows.push(["Expense",new Date(e.ts).toISOString().slice(0,10),e.cat,e.amount,e.cur,Math.round(e.sar),l?l.name:"",e.note||""]);});
+  const rows=[["Type","Date","Name","Category/Shift","Amount","Currency","SAR","Place","Note"]];
+  S.income.forEach(e=>{const l=S.locations.find(x=>x.id===e.locId);rows.push(["Income",new Date(e.ts).toISOString().slice(0,10),"","Shift "+e.shift,e.amount,e.cur,Math.round(e.sar),l?l.name:"",e.note||""]);});
+  S.expenses.forEach(e=>{const l=S.locations.find(x=>x.id===e.locId);rows.push(["Expense",new Date(e.ts).toISOString().slice(0,10),e.name||"",e.cat,e.amount,e.cur,Math.round(e.sar),l?l.name:"",e.note||""]);});
   const csv=rows.map(r=>r.map(q).join(",")).join("\n");
   const c=window.Capacitor;
   if(c&&c.isNativePlatform&&c.isNativePlatform()&&c.Plugins&&c.Plugins.Filesystem&&c.Plugins.Share){
@@ -1331,7 +1350,7 @@ function init(){load();applyRecurring();applyTheme();applyLangDom();setupBackBut
 function CAP(){ return (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) ? window.Capacitor : null; }
 const Native = {
   isNative(){ return !!CAP(); },
-  _fn(){ return "mizan-backup-"+new Date().toISOString().slice(0,10)+".json"; },
+  _fn(){ return S.settings.localBackupMode==='dated' ? "mizan-backup-"+todayISO()+".json" : "mizan-backup.json"; },
   async backupLocal(){
     const c=CAP(), data=JSON.stringify(S,null,2), fn=this._fn();
     if(c && c.Plugins && c.Plugins.Filesystem){
@@ -1340,7 +1359,23 @@ const Native = {
       catch(e){ toast(isRTL()?"تعذّر الحفظ":"Backup failed"); }
     } else { exportData(); }
   },
+  async pickDriveFolder(){
+    const c=CAP(); if(!(c && c.Plugins && c.Plugins.MizanBackup)) return null;
+    try{ const r=await c.Plugins.MizanBackup.pickFolder(); return (r&&r.uri)?r:null; }
+    catch(e){ return null; }
+  },
+  async writeDriveBackupSilent(){
+    const c=CAP(); if(!(c && c.Plugins && c.Plugins.MizanBackup)) return false;
+    if(!S.settings.driveFolderUri) return false;
+    try{ await c.Plugins.MizanBackup.writeFile({uri:S.settings.driveFolderUri,filename:"mizan-backup",data:JSON.stringify(S,null,2)}); return true; }
+    catch(e){ return false; }
+  },
   async backupDrive(){
+    if(S.settings.driveBackupMode==='auto' && S.settings.driveFolderUri){
+      const ok=await this.writeDriveBackupSilent();
+      toast(ok?(isRTL()?"تم التحديث في Google Drive":"Updated in Google Drive"):(isRTL()?"تعذّر الحفظ — أعد اختيار المجلد":"Backup failed — reselect folder"));
+      return;
+    }
     const c=CAP(), data=JSON.stringify(S,null,2), fn=this._fn();
     if(c && c.Plugins && c.Plugins.Filesystem && c.Plugins.Share){
       try{ const res=await c.Plugins.Filesystem.writeFile({path:fn,data,directory:"CACHE",encoding:"utf8"});
@@ -1389,7 +1424,9 @@ function applyRecurring(){
 }
 async function autoBackup(){ const c=window.Capacitor; if(!(c&&c.isNativePlatform&&c.isNativePlatform()))return; if(!S.meta)S.meta={lastBackup:0};
   if(Date.now()-(S.meta.lastBackup||0)<86400000)return;
-  try{ if(c.Plugins&&c.Plugins.Filesystem){ await c.Plugins.Filesystem.writeFile({path:"mizan-auto-backup.json",data:JSON.stringify(S),directory:"DOCUMENTS",encoding:"utf8",recursive:true}); S.meta.lastBackup=Date.now(); save(); } }catch(e){}
+  try{ if(c.Plugins&&c.Plugins.Filesystem){ await c.Plugins.Filesystem.writeFile({path:"mizan-auto-backup.json",data:JSON.stringify(S),directory:"DOCUMENTS",encoding:"utf8",recursive:true}); } }catch(e){}
+  try{ if(S.settings.driveBackupMode==='auto' && S.settings.driveFolderUri){ await Native.writeDriveBackupSilent(); } }catch(e){}
+  S.meta.lastBackup=Date.now(); save();
 }
 function setupBackButton(){ const c=window.Capacitor; if(!(c&&c.Plugins&&c.Plugins.App))return;
   try{ c.Plugins.App.addListener('backButton',()=>{ if(document.querySelector('.scrim')){closeSheet();return;} if(typeof TAB!=='undefined'&&TAB!=='home'){go('home');return;} c.Plugins.App.exitApp(); }); }catch(e){}

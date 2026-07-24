@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(MizanWidgetPlugin.class);
+        registerPlugin(MizanBackupPlugin.class);
         super.onCreate(savedInstanceState);
         // Privacy: hide financial data in the recent-apps switcher and block screenshots
         getWindow().setFlags(
